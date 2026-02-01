@@ -8,13 +8,4 @@ client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 @app.get("/test-ai")
 def test_ai():
-    try:
-        response = client.responses.create(
-            model="gpt-4.1-mini",
-            input="Say hello"
-        )
-
-        return {"reply": response.output_text}
-
-    except Exception as e:
-        return {"error": str(e)}
+    return {"reply": "AI 연결 준비중..."}
