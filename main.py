@@ -1,4 +1,8 @@
 from fastapi import FastAPI
+from fastapi import Request, Header
+from nacl.signing import VerifyKey
+from nacl.exceptions import BadSignatureError
+import json
 from openai import OpenAI
 import os
 from fastapi import Request
@@ -38,3 +42,43 @@ async def discord_webhook(req: Request):
         }
 
     return {"status": "no command"}
+
+DISCORD_PUBLIC_KEY = os.environ.get("DISCORD_PUBLIC_KEY")
+
+
+@app.post("/interactions")
+async def interactions(request: Request,
+                       x_signature_ed25519: str = Header(None),
+                       x_signature_timestamp: str = Header(None)):
+
+    body = await request.body()
+
+    verify_key = VerifyKey(bytes.fromhex(DISCORD_PUBLIC_KEY))
+
+    try:
+        verify_key.verify(
+            x_signature_timestamp.encode() + body,
+            bytes.fromhex(x_signature_ed25519)
+        )
+    except BadSignatureError:
+        return {"error": "invalid request signature"}
+
+    data = json.loads(body)
+
+    # Discord ping test
+    if data["type"] == 1:
+        return {"type": 1}
+
+    # Slash command
+    if data["type"] == 2:
+        name = data["data"]["name"]
+
+        if name == "m":
+            return {
+                "type": 4,
+                "data": {
+                    "content": "😎 memebot 준비 완료!\n`/m sc` : 크랙 밈 생성\n`/m clip` : 하이라이트 추출"
+                }
+            }
+
+    return {"type": 4, "data": {"content": "unknown command"}}
