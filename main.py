@@ -1,10 +1,7 @@
-from fastapi import FastAPI, Request, Header
-from nacl.signing import VerifyKey
-from nacl.exceptions import BadSignatureError
-import json
+from fastapi import FastAPI, Request
 import os
 import random
-from openai import OpenAI
+import requests
 
 app = FastAPI()
 
@@ -12,118 +9,97 @@ app = FastAPI()
 # ENV
 # =========================
 
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-DISCORD_PUBLIC_KEY = os.environ.get("DISCORD_PUBLIC_KEY")
+DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+DISCORD_API_BASE = "https://discord.com/api/v10"
+
+HEADERS = {
+    "Authorization": f"Bot {DISCORD_BOT_TOKEN}",
+    "Content-Type": "application/json"
+}
 
 # =========================
-# Test Endpoint
+# Health Check
 # =========================
 
 @app.get("/")
 def root():
     return {"status": "memebot running"}
 
-@app.get("/test-ai")
-def test_ai():
-    return {"reply": "AI 연결 준비 완료 😎"}
-
 # =========================
-# Discord Interaction Endpoint
+# Discord Message Webhook
 # =========================
 
-@app.post("/interactions")
-async def interactions(
-    request: Request,
-    x_signature_ed25519: str = Header(None),
-    x_signature_timestamp: str = Header(None),
-):
+@app.post("/discord")
+async def discord_webhook(req: Request):
+    data = await req.json()
 
-    # ---------- Security Check ----------
+    # 봇 메시지 무시 (무한루프 방지)
+    if data.get("author", {}).get("bot"):
+        return {"status": "ignored"}
 
-    if not DISCORD_PUBLIC_KEY:
-        return {"error": "missing discord public key"}
+    content = data.get("content", "").strip()
+    channel_id = data.get("channel_id")
+    attachments = data.get("attachments", [])
 
-    body = await request.body()
+    # -----------------------
+    # !m 기본 호출
+    # -----------------------
+    if content == "!m":
+        replies = [
+            "Legendary summon detected 💀\nUse `!m sc` or `!m clip`",
+            "Bro just yelled my name 😭\nTry `!m sc`",
+            "memebot online.\nWaiting for chaos.",
+        ]
+        send_message(channel_id, random.choice(replies))
+        return {"status": "ok"}
 
-    verify_key = VerifyKey(bytes.fromhex(DISCORD_PUBLIC_KEY))
+    # -----------------------
+    # !m sc
+    # -----------------------
+    if content == "!m sc":
+        if not attachments:
+            send_message(
+                channel_id,
+                "No video attached.\nDrop a clip with `!m sc` 🎥"
+            )
+            return {"status": "ok"}
 
-    try:
-        verify_key.verify(
-            x_signature_timestamp.encode() + body,
-            bytes.fromhex(x_signature_ed25519),
+        video_url = attachments[0]["url"]
+        send_message(
+            channel_id,
+            f"🔥 Scuff meme mode ON\nProcessing video:\n{video_url}"
         )
-    except BadSignatureError:
-        return {"error": "invalid request signature"}
 
-    data = json.loads(body)
+        # 👉 여기 나중에 AI 처리 붙이면 됨
+        return {"status": "ok"}
 
-    # ---------- Discord Ping ----------
+    # -----------------------
+    # !m clip
+    # -----------------------
+    if content == "!m clip":
+        if not attachments:
+            send_message(
+                channel_id,
+                "Attach a video to extract highlights 🎬"
+            )
+            return {"status": "ok"}
 
-    if data["type"] == 1:
-        return {"type": 1}
+        video_url = attachments[0]["url"]
+        send_message(
+            channel_id,
+            f"🎬 Highlight mode ON\nAnalyzing:\n{video_url}"
+        )
 
-    # ---------- Slash Command ----------
-
-    if data["type"] == 2:
-        command_name = data["data"]["name"]
-
-        # /m command
-        if command_name == "m":
-
-            options = data["data"].get("options")
-
-            # ---------------------------
-            # /m only (no option)
-            # ---------------------------
-
-            if not options:
-                replies = [
-                    "레전드 크랙 호출이네 ㅋㅋ\n👉 `/m sc` : 스커프 밈 생성\n👉 `/m clip` : 하이라이트 추출",
-                    "야 그냥 부른거잖아 😂\n`/m sc` 로 영상 던져봐",
-                    "memebot 대기중 😎\n/m sc 로 시작 ㄱㄱ",
-                ]
-
-                return {
-                    "type": 4,
-                    "data": {"content": random.choice(replies)},
-                }
-
-            # ---------------------------
-            # option parsing
-            # ---------------------------
-
-            sub_command = options[0]["name"]
-
-            # ---------------------------
-            # /m sc
-            # ---------------------------
-
-            if sub_command == "sc":
-                return {
-                    "type": 4,
-                    "data": {
-                        "content": "🔥 스커프 모드 ON\n영상 올려주면 바로 크랙 밈 만들어줄게"
-                    },
-                }
-
-            # ---------------------------
-            # /m clip
-            # ---------------------------
-
-            if sub_command == "clip":
-                return {
-                    "type": 4,
-                    "data": {
-                        "content": "🎬 하이라이트 모드 ON\n영상 업로드 ㄱㄱ"
-                    },
-                }
-
-        # Unknown slash command fallback
-        return {
-            "type": 4,
-            "data": {"content": "뭔 명령인지 모르겠는데요 🤔"},
-        }
+        return {"status": "ok"}
 
     return {"status": "ignored"}
+
+# =========================
+# Discord Send Message
+# =========================
+
+def send_message(channel_id: str, content: str):
+    url = f"{DISCORD_API_BASE}/channels/{channel_id}/messages"
+    payload = {"content": content}
+    requests.post(url, headers=HEADERS, json=payload)
