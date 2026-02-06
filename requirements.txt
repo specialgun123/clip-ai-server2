@@ -3,3 +3,4 @@ uvicorn
 openai
 requests
 pynacl
+discord.py
