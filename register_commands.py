@@ -2,8 +2,8 @@ import requests
 import os
 import json
 
-APP_ID = os.environ.get["APPLICATION_ID"]
-BOT_TOKEN = os.environ.get["DISCORD_BOT_TOKEN"]
+APP_ID = os.environ.get("APPLICATION_ID")
+BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
 
 url = f"https://discord.com/api/v10/applications/{APP_ID}/commands"
 
